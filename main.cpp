@@ -28,7 +28,7 @@ void usage() {
 	printf("sample: arp-spoof eth0 192.168.0.2 192.168.0.1\n");
 }
 
-void getMacAddress(Mac uc_Mac, char* dev) {
+void getMacAddress(Mac* uc_Mac, char* dev) {
    	int fd;
 	
 	struct ifreq ifr;
@@ -46,10 +46,10 @@ void getMacAddress(Mac uc_Mac, char* dev) {
 
 	mac = (uint8_t*)ifr.ifr_hwaddr.sa_data;
 
-	uc_Mac = Mac(mac);
+	*uc_Mac = Mac(mac);
 }
 
-void getIpAddress(Ip uc_Ip, char* dev) {
+void getIpAddress(Ip* uc_Ip, char* dev) {
 	int fd;
 	
 	struct ifreq ifr;
@@ -70,7 +70,7 @@ void getIpAddress(Ip uc_Ip, char* dev) {
 	ip = inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
     sscanf(ip, "%d.%d.%d.%d", &tempIp[0], &tempIp[1], &tempIp[2], &tempIp[3]);
 
-	uc_Ip = Ip((tempIp[0] << 24) | (tempIp[1] << 16) | (tempIp[2] << 8) | (tempIp[3]));
+	*uc_Ip = Ip((tempIp[0] << 24) | (tempIp[1] << 16) | (tempIp[2] << 8) | (tempIp[3]));
 }
 
 int sendArp(pcap_t* handle, Mac ethdmac, Mac ethsmac, uint16_t op, Mac arpsmac, Ip arpsip, Mac arptmac, Ip arptip) {
@@ -115,8 +115,8 @@ int main(int argc, char* argv[]) {
 	Ip myIp;
 
 	// Get My Mac, Ip
-	getMacAddress(myMac, dev);
-	getIpAddress(myIp, dev);
+	getMacAddress(&myMac, dev);
+	getIpAddress(&myIp, dev);
 
 	EthArpPacket arpreply;
 

